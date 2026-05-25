@@ -1,10 +1,10 @@
 #!/system/bin/sh
 #==============================================================================
 # @author  bomo
-# @description 微信保推送杀主进程 - Logcat事件驱动 + 灭屏杀进程
-#   1. 监听 am_proc_start 事件，检测微信非:push进程启动后等5秒杀灭
-#   2. 监听屏幕熄灭事件，灭屏后立即杀灭非:push进程
-#   3. VoIP通话期间延迟杀进程
+# @description 微信保推送杀主进程 - Logcat事件驱动 + 灭屏结束进程
+#   1. 监听 am_proc_start 事件，检测微信非:push进程启动后等5秒结束
+#   2. 监听屏幕熄灭事件，灭屏后立即结束非:push进程
+#   3. VoIP通话期间延迟结束进程
 #==============================================================================
 
 LOG_FILE="/data/local/tmp/wechat_push_keeper.log"
@@ -78,7 +78,7 @@ list_wechat_non_push_pids() {
     done
 }
 
-# dumpsys 通用超时保护，避免长时间运行后卡住导致杀进程失效
+# dumpsys 通用超时保护，避免长时间运行后卡住导致结束进程失效
 DUMP_TIMEOUT=3
 
 safe_dumpsys() {
@@ -121,14 +121,14 @@ voip_polling_kill() {
         while true; do
             sleep 20
             if ! is_wechat_voip_active; then
-                log "VoIP通话已结束，执行延迟杀进程"
+                log "VoIP通话已结束，执行延迟结束进程"
                 local pids
                 pids=$(list_wechat_non_push_pids)
                 if [ -n "$pids" ] && ! is_wechat_foreground; then
                     for pid in $pids; do
                         is_numeric "$pid" || continue
                         [ "$pid" -le 500 ] && continue
-                        log "杀 PID=$pid (VoIP后延迟)"
+                        log "结束 PID=$pid (VoIP后延迟)"
                         kill -9 "$pid" 2>/dev/null
                     done
                 fi
@@ -159,7 +159,7 @@ kill_wechat_non_push() {
     for pid in $pids; do
         is_numeric "$pid" || continue
         [ "$pid" -le 500 ] && continue
-        log "杀 PID=$pid"
+        log "结束 PID=$pid"
         kill -9 "$pid" 2>/dev/null
     done
 }
@@ -189,9 +189,9 @@ monitor_screen_off() {
         elif [ "$last_state" = "on" ]; then
             # 屏幕刚从亮变灭
             last_state="off"
-            log "检测到屏幕熄灭，执行杀进程"
+            log "检测到屏幕熄灭，执行结束进程"
             kill_wechat_non_push
-            # 灭屏后延迟3秒再杀一次，确保进程彻底清理
+            # 灭屏后延迟3秒再结束一次，确保进程彻底清理
             sleep 3
             kill_wechat_non_push
         fi
