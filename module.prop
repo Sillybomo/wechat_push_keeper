@@ -1,0 +1,6 @@
+id=wechat_push_keeper
+name=微信保推送杀主进程
+version=v1.0
+versionCode=1
+author=bomo
+description=通过监听Logcat事件，仅保留微信:push进程，杀灭后台唤醒的主进程等非必要进程。采用事件驱动机制，零功耗延迟杀进程。
