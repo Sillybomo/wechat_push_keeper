@@ -17,16 +17,21 @@ VOIP_PID_FILE="/data/local/tmp/wechat_voip_polling.pid"
 # 记录主进程 PID
 echo $$ > "$PID_FILE"
 
-log() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"
+# 日志轮转：超过100行则截断保留最新50行
+rotate_log() {
+    local line_count
+    line_count=$(wc -l < "$LOG_FILE" 2>/dev/null | tr -d ' ')
+    if [ "${line_count:-0}" -gt 100 ] 2>/dev/null; then
+        tail -n 50 "$LOG_FILE" > "${LOG_FILE}.tmp" 2>/dev/null && \
+            mv "${LOG_FILE}.tmp" "$LOG_FILE" 2>/dev/null
+    fi
 }
 
-# 日志轮转：超过100行则截断
-LINE_COUNT=$(wc -l < "$LOG_FILE" 2>/dev/null)
-if [ "$LINE_COUNT" -gt 100 ] 2>/dev/null; then
-    tail -n 50 "$LOG_FILE" > "${LOG_FILE}.tmp" 2>/dev/null
-    mv "${LOG_FILE}.tmp" "$LOG_FILE" 2>/dev/null
-fi
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"
+    rotate_log
+}
+
 log "========== service.sh 启动 =========="
 
 # 等待系统启动完成
@@ -49,9 +54,12 @@ is_numeric() {
 }
 
 list_wechat_non_push_pids() {
-    {
-        ps -A 2>/dev/null || ps -e 2>/dev/null || ps 2>/dev/null
-    } | while read -r ps_line; do
+    local ps_output
+    ps_output=$(ps -A 2>/dev/null || ps -e 2>/dev/null || ps 2>/dev/null)
+    if [ -z "$ps_output" ]; then
+        return
+    fi
+    echo "$ps_output" | while read -r ps_line; do
         case "$ps_line" in
             *com.tencent.mm*) ;;
             *) continue ;;
@@ -70,15 +78,26 @@ list_wechat_non_push_pids() {
     done
 }
 
+# dumpsys 通用超时保护，避免长时间运行后卡住导致杀进程失效
+DUMP_TIMEOUT=3
+
+safe_dumpsys() {
+    timeout "$DUMP_TIMEOUT" dumpsys "$@" 2>/dev/null
+}
+
 is_wechat_foreground() {
     local fg
-    fg=$(dumpsys window 2>/dev/null | grep -E 'mCurrentFocus|mFocusedApp' | head -1 | awk '{print $3}' | cut -d'/' -f1 | tr -d '}')
+    fg=$(safe_dumpsys window | grep -E 'mCurrentFocus|mFocusedApp|mInputMethodTarget' | head -1 | awk '{print $3}' | cut -d'/' -f1 | tr -d '}')
+    if [ -z "$fg" ]; then
+        # 备用方案：通过 activity 判断前台
+        fg=$(safe_dumpsys activity activities 2>/dev/null | grep -E 'mResumedActivity|topResumedActivity' | head -1 | grep -oE 'com\.[a-zA-Z0-9.]+' | head -1)
+    fi
     [ "$fg" = "com.tencent.mm" ]
 }
 
 is_wechat_voip_active() {
     local match_line
-    match_line=$(dumpsys activity services com.tencent.mm 2>/dev/null | grep -i "VoipNewForegroundService")
+    match_line=$(safe_dumpsys activity services com.tencent.mm | grep -i "VoipNewForegroundService")
     if [ -n "$match_line" ]; then
         log "VoIP服务检测到: $match_line"
         return 0
@@ -88,7 +107,7 @@ is_wechat_voip_active() {
 
 is_screen_on() {
     # 检查屏幕是否亮着
-    dumpsys power 2>/dev/null | grep -q "mWakefulness=Awake"
+    safe_dumpsys power | grep -q "mWakefulness=Awake"
 }
 
 voip_polling_kill() {
