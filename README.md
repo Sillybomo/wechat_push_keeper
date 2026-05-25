@@ -1,4 +1,4 @@
-# 微信保推送杀主进程 (wechat_push_keeper)
+# 微信保推送结束主进程 (wechat_push_keeper)
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Magisk](https://img.shields.io/badge/Magisk-20.4+-green.svg)](https://github.com/topjohnwu/Magisk)
