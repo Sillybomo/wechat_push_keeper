@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+<meta name="color-scheme" content="dark light">
+<title>微信保推送控制台</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="loading" class="loading">加载中</div>
+
+<div id="main-content" style="display:none">
+
+  <div class="header">
+    <div class="header-icon">⚡</div>
+    <div class="header-text">
+      <h1>微信保推送</h1>
+      <p>@author bomo · 事件驱动 · 零功耗</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">运行状态</div>
+    <div class="status-grid">
+      <div class="status-item">
+        <div class="status-label">主进程</div>
+        <div class="status-value" id="sv-main">-</div>
+      </div>
+      <div class="status-item">
+        <div class="status-label">灭屏监听</div>
+        <div class="status-value" id="sv-screen">-</div>
+      </div>
+      <div class="status-item">
+        <div class="status-label">VoIP 轮询</div>
+        <div class="status-value" id="sv-voip">-</div>
+      </div>
+      <div class="status-item" id="sv-pid">
+        <div class="status-label">PID</div>
+        <div class="status-value" style="font-size:14px"><span>-</span></div>
+      </div>
+    </div>
+    <div class="btn-row" style="margin-top:12px">
+      <button class="btn btn-secondary" id="btn-refresh-status">↻ 刷新状态</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">配置参数</div>
+
+    <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:12px;margin-bottom:16px;font-size:12px;color:var(--text2);line-height:1.6">
+      调整各项参数并不会有明显效果，功耗也不会显著增加或减少。仅适用于需要自定义的满足部分人群，否则保持默认即可。
+    </div>
+
+    <div class="config-group">
+      <div class="config-name">启动后等待延迟 <span class="default-badge">默认</span></div>
+      <div class="config-desc">微信非 :push 进程启动后等待多久再结束</div>
+      <div class="config-input-wrap">
+        <input type="number" class="config-input" id="cfg-kill-delay" min="0" max="60" step="1">
+        <span class="config-unit">秒</span>
+      </div>
+    </div>
+
+    <div class="config-group">
+      <div class="config-name">灭屏第一次延迟 <span class="default-badge">默认</span></div>
+      <div class="config-desc">灭屏后第一次清理前等待秒数，设置为0则为立即清理</div>
+      <div class="config-input-wrap">
+        <input type="number" class="config-input" id="cfg-screen-first-kill-delay" min="0" max="30" step="1">
+        <span class="config-unit">秒</span>
+      </div>
+    </div>
+
+    <div class="config-group">
+      <div class="config-name">灭屏二次延迟 <span class="default-badge">默认</span></div>
+      <div class="config-desc">灭屏后第二次清理的等待时间，建议在第一次清理时间之后等待3-5秒（请勿调整小于第一次清理时间）</div>
+      <div class="config-input-wrap">
+        <input type="number" class="config-input" id="cfg-screen-kill-delay" min="0" max="60" step="1">
+        <span class="config-unit">秒</span>
+      </div>
+    </div>
+
+    <div class="config-group">
+      <div class="config-name">灭屏轮询间隔 <span class="default-badge">默认</span></div>
+      <div class="config-desc">灭屏监听线程的检测间隔，拉长此项可减少对灭屏状态的检测频率，减小则增加检测频率。但实际调整该参数并无明显效果，功耗也不会显著增加和减少。</div>
+      <div class="config-input-wrap">
+        <input type="number" class="config-input" id="cfg-screen-poll" min="1" max="30" step="1">
+        <span class="config-unit">秒</span>
+      </div>
+    </div>
+
+    <div class="config-group">
+      <div class="config-name">VoIP 轮询间隔 <span class="default-badge">默认</span></div>
+      <div class="config-desc">通话中检测 VoIP 是否结束的间隔，拉长此项可减少对微信通话的检测频率，减小则增加检测频率。但实际调整该参数并无明显效果，功耗也不会显著增加和减少。</div>
+      <div class="config-input-wrap">
+        <input type="number" class="config-input" id="cfg-voip-poll" min="5" max="120" step="5">
+        <span class="config-unit">秒</span>
+      </div>
+    </div>
+
+    <div class="config-group">
+      <div class="config-name">日志最大行数 <span class="default-badge">默认</span></div>
+      <div class="config-desc">超过此数时截断保留一半</div>
+      <div class="config-input-wrap">
+        <input type="number" class="config-input" id="cfg-log-lines" min="20" max="500" step="10">
+        <span class="config-unit">行</span>
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-primary" id="btn-save">✓ 保存并应用</button>
+      <button class="btn btn-secondary" id="btn-default">↺ 恢复默认</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">实时日志</div>
+    <div class="log-bar">
+      <button class="btn btn-secondary" id="btn-refresh-log">↻ 刷新</button>
+      <span class="log-size" id="sv-logsize"><span>-</span></span>
+    </div>
+    <div class="log-container" id="log-content">加载中...</div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

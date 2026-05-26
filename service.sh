@@ -2,27 +2,43 @@
 #==============================================================================
 # @author  bomo
 # @description 微信保推送杀主进程 - Logcat事件驱动 + 灭屏结束进程
-#   1. 监听 am_proc_start 事件，检测微信非:push进程启动后等5秒结束
+#   1. 监听 am_proc_start 事件，检测微信非:push进程启动后启动延迟结束
 #   2. 监听屏幕熄灭事件，灭屏后立即结束非:push进程
 #   3. VoIP通话期间延迟结束进程
 #==============================================================================
 
 LOG_FILE="/data/local/tmp/wechat_push_keeper.log"
+CONFIG_FILE="/data/local/tmp/wechat_push_keeper.conf"
 VOIP_LOCK="/data/local/tmp/wechat_voip_polling.lock"
 SCREEN_LOCK="/data/local/tmp/wechat_screen_kill.lock"
 PID_FILE="/data/local/tmp/wechat_push_keeper.pid"
 SCR_PID_FILE="/data/local/tmp/wechat_screen_kill.pid"
 VOIP_PID_FILE="/data/local/tmp/wechat_voip_polling.pid"
 
+# ==================== 默认配置 ====================
+KILL_DELAY=5                  # 检测到非push进程后的等待秒数 (原sleep 5)
+SCREEN_FIRST_KILL_DELAY=0     # 灭屏后第一次清理前等待秒数 (0=立即清理)
+SCREEN_KILL_DELAY=3           # 灭屏第一次清理后到第二次清理的延迟秒数
+SCREEN_POLL_INTERVAL=2        # 灭屏监听轮询间隔 (原sleep 2)
+VOIP_POLL_INTERVAL=20         # VoIP轮询间隔 (原sleep 20)
+LOG_MAX_LINES=100             # 日志最大行数
+# ==================================================
+
+# 加载配置文件（如果存在）
+if [ -f "$CONFIG_FILE" ]; then
+    . "$CONFIG_FILE" 2>/dev/null
+fi
+
 # 记录主进程 PID
 echo $$ > "$PID_FILE"
 
-# 日志轮转：超过100行则截断保留最新50行
+# 日志轮转：超过 LOG_MAX_LINES 行则截断保留一半
 rotate_log() {
     local line_count
     line_count=$(wc -l < "$LOG_FILE" 2>/dev/null | tr -d ' ')
-    if [ "${line_count:-0}" -gt 100 ] 2>/dev/null; then
-        tail -n 50 "$LOG_FILE" > "${LOG_FILE}.tmp" 2>/dev/null && \
+    if [ "${line_count:-0}" -gt "$LOG_MAX_LINES" ] 2>/dev/null; then
+        local keep=$(( LOG_MAX_LINES / 2 ))
+        tail -n "$keep" "$LOG_FILE" > "${LOG_FILE}.tmp" 2>/dev/null && \
             mv "${LOG_FILE}.tmp" "$LOG_FILE" 2>/dev/null
     fi
 }
@@ -119,7 +135,7 @@ voip_polling_kill() {
         echo $$ > "$VOIP_PID_FILE"
         touch "$VOIP_LOCK"
         while true; do
-            sleep 20
+            sleep "$VOIP_POLL_INTERVAL"
             if ! is_wechat_voip_active; then
                 log "VoIP通话已结束，执行延迟结束进程"
                 local pids
@@ -187,15 +203,15 @@ monitor_screen_off() {
         if is_screen_on; then
             last_state="on"
         elif [ "$last_state" = "on" ]; then
-            # 屏幕刚从亮变灭
             last_state="off"
-            log "检测到屏幕熄灭，执行结束进程"
+            log "检测到屏幕熄灭，等待 ${SCREEN_FIRST_KILL_DELAY}秒 后执行第一次清理..."
+            sleep "$SCREEN_FIRST_KILL_DELAY"
             kill_wechat_non_push
-            # 灭屏后延迟3秒再结束一次，确保进程彻底清理
-            sleep 3
+            log "等待 ${SCREEN_KILL_DELAY}秒 后执行第二次清理..."
+            sleep "$SCREEN_KILL_DELAY"
             kill_wechat_non_push
         fi
-        sleep 2
+        sleep "$SCREEN_POLL_INTERVAL"
     done
 }
 
@@ -226,8 +242,8 @@ while true; do
             *:push*) log "跳过 :push"; continue ;;
         esac
 
-        log "非push进程 [$PROC_NAME]，等5秒..."
-        sleep 5
+        log "非push进程 [$PROC_NAME]，等${KILL_DELAY}秒..."
+        sleep "$KILL_DELAY"
         kill_wechat_non_push
     done
 
