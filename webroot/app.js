@@ -11,6 +11,8 @@ var LOG_FILE = TMP_DIR + '/wechat_push_keeper.log'
 var ACTION = MODDIR + '/action.sh'
 var cbCounter = 0
 var defaultValues = {}
+var lastOperationTime = 0
+var OPERATION_COOLDOWN = 3000
 
 function $(sel) { return document.querySelector(sel) }
 function $$(sel) { return document.querySelectorAll(sel) }
@@ -101,19 +103,27 @@ function showToast(msg) {
   t._hide = setTimeout(function() { t.classList.remove('show') }, 2500)
 }
 
+/**
+ * 操作防抖检查，防止用户高频操作
+ * @returns {boolean} 是否允许执行操作
+ */
+function checkCooldown() {
+  var now = Date.now()
+  var elapsed = now - lastOperationTime
+  if (elapsed < OPERATION_COOLDOWN) {
+    var remain = Math.ceil((OPERATION_COOLDOWN - elapsed) / 1000)
+    showToast('操作过于频繁，请等待' + remain + '秒后再试')
+    return false
+  }
+  lastOperationTime = now
+  return true
+}
+
 /** 更新运行状态面板 */
 function updateStatus(data) {
   if (!data) return
   var elMain = $('#sv-main')
   if (elMain) { elMain.textContent = data.running ? '运行中' : '已停止'; elMain.className = 'status-value ' + (data.running ? 'running' : 'stopped') }
-  var elScreen = $('#sv-screen')
-  if (elScreen) { elScreen.textContent = data.screen_running ? '运行中' : '已停止'; elScreen.className = 'status-value ' + (data.screen_running ? 'running' : 'stopped') }
-  var elVoip = $('#sv-voip')
-  if (elVoip) { elVoip.textContent = data.voip_running ? '运行中' : '已停止'; elVoip.className = 'status-value ' + (data.voip_running ? 'running' : 'stopped') }
-  var elPid = $('#sv-pid span')
-  if (elPid) elPid.textContent = data.pid ? 'PID: ' + data.pid : '-'
-  var elSize = $('#sv-logsize span')
-  if (elSize) elSize.textContent = formatSize(data.log_size)
 }
 
 function formatSize(bytes) {
@@ -237,6 +247,8 @@ function getConfigValues() {
 
 /** 保存配置并热加载 */
 async function saveConfig() {
+  if (!checkCooldown()) return
+
   var v = getConfigValues()
 
   // 校验：第二次清理时间不允许小于第一次清理时间
@@ -251,20 +263,30 @@ async function saveConfig() {
   var result = await kexecJSON(cmd, 8000)
   if (result) {
     showToast('配置已保存并热加载')
-    updateStatus(result)
     showDefaultBadges()
+    await refreshStatus()
   } else {
     showToast('保存失败，请检查模块是否正常安装')
   }
 }
 
+/** 刷新状态（独立函数，保存配置后调用以获取最新状态） */
+async function refreshStatus() {
+  var statusData = await kexecJSON('sh "' + ACTION + '" status')
+  if (statusData) {
+    updateStatus(statusData)
+  }
+}
+
 /** 恢复默认配置 */
 async function resetDefaults() {
+  if (!checkCooldown()) return
+
   var result = await kexecJSON('sh "' + ACTION + '" default', 8000)
   if (result) {
     showToast('已恢复默认配置并热加载')
-    updateStatus(result)
     showDefaultBadges()
+    await refreshStatus()
   } else {
     showToast('恢复失败')
   }
@@ -272,6 +294,8 @@ async function resetDefaults() {
 
 /** 重启服务 */
 async function restartService() {
+  if (!checkCooldown()) return
+
   var result = await kexecJSON('sh "' + ACTION + '" restart')
   if (result) {
     showToast('服务已重启')
@@ -290,9 +314,15 @@ document.addEventListener('DOMContentLoaded', function() {
   var btnRestart = $('#btn-restart')
   if (btnRestart) btnRestart.addEventListener('click', restartService)
   var btnRefreshLog = $('#btn-refresh-log')
-  if (btnRefreshLog) btnRefreshLog.addEventListener('click', loadLog)
+  if (btnRefreshLog) btnRefreshLog.addEventListener('click', function() {
+    if (!checkCooldown()) return
+    loadLog()
+  })
   var btnRefreshStatus = $('#btn-refresh-status')
-  if (btnRefreshStatus) btnRefreshStatus.addEventListener('click', loadAll)
+  if (btnRefreshStatus) btnRefreshStatus.addEventListener('click', function() {
+    if (!checkCooldown()) return
+    loadAll()
+  })
 
   // 输入值变化时更新默认标记
   $$('.config-input').forEach(function(el) {

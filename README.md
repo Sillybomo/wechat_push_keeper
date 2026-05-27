@@ -5,16 +5,16 @@
 [![KernelSU](https://img.shields.io/badge/KernelSU-supported-orange.svg)](https://kernelsu.org)
 [![Android](https://img.shields.io/badge/Android-10+-brightgreen.svg)](https://www.android.com)
 
-Magisk / KernelSU / APatch 模块，通过监听系统事件精准结束微信非必要进程，仅保留 `:push` 推送进程，大幅降低微信后台功耗。
+Magisk / KernelSU / APatch 模块，基于事件监听的被动触发机制，通过Logcat监听微信进程启动事件，仅保留 `:push` 推送进程，结束后台唤醒的主进程等非必要进程。
 
 ## 📌 功能特性
 
-- **事件驱动结束进程** — 监听 `am_proc_start` 事件，微信非 `:push` 进程启动后等待 5 秒自动结束
+- **事件监听被动触发** — 监听 `am_proc_start` 事件，微信非 `:push` 进程启动后等待 5 秒自动结束
 - **灭屏结束进程** — 监听屏幕熄灭事件，灭屏时立即结束非推送进程
 - **VoIP 通话保护** — 检测到微信语音/视频通话时延迟结束进程，通话结束后再清理
 - **前台保护** — 微信在前台时不结束进程，不影响正常使用
 - **WebUI 控制面板** — 可视化配置各项参数，保存即生效（无需重启设备）
-- **零功耗延迟** — 事件驱动机制，无轮询无耗电
+- **零功耗延迟** — 事件监听机制，无轮询无耗电
 - **日志轮转** — 超过可配置行数自动截断
 
 ## 📱 兼容性
