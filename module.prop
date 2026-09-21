@@ -1,6 +1,6 @@
 id=wechat_push_keeper
 name=微信保推送结束主进程
-version=v1.5.1
-versionCode=10
+version=v1.5.2
+versionCode=11
 author=bomo
 description=基于事件监听的被动触发机制，通过Logcat监听微信进程启动事件，仅保留:push进程，结束后台唤醒的主进程等非必要进程。内置WebUI，支持可视化配置与日志查看。
