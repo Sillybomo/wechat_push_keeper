@@ -75,6 +75,23 @@ is_numeric() {
     esac
 }
 
+# 精确校验 PID 是否确为微信进程（读取 /proc/<pid>/cmdline 首字段）
+# 用途：替代原先基于 PID 数值的阈值判断。Android 17(ColorOS 17) 上微信主进程
+#       PID 实测为 464，会被原 `[ "$pid" -le 500 ]` 误跳过 → 主进程永不结束。
+# 参数：$1 = PID
+# 返回：0 = 是微信进程；1 = 不是（或进程已退出 / 无法读取）
+is_wechat_pid() {
+    local pid="$1"
+    is_numeric "$pid" || return 1
+    [ -r "/proc/$pid/cmdline" ] || return 1
+    local name
+    name=$(tr '\0' '\n' < "/proc/$pid/cmdline" 2>/dev/null | head -1)
+    case "$name" in
+        com.tencent.mm|com.tencent.mm:*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 list_wechat_non_push_pids() {
     local ps_output
     ps_output=$(ps -A 2>/dev/null || ps -e 2>/dev/null || ps 2>/dev/null)
@@ -126,8 +143,11 @@ is_wechat_foreground() {
     fi
 
     # 备用方案：通过 activity 判断前台
+    # 注意：Android 17 / ColorOS 17 上该字段已变为 `ResumedActivity:`（无 m/top 前缀），
+    #       原模式 'mResumedActivity|topResumedActivity' 匹配不到任何行 → fg 恒为空。
+    #       改用 ResumedActivity（子串匹配，可同时覆盖旧版带前缀的写法）。
     local fg
-    fg=$(safe_dumpsys activity activities 2>/dev/null | grep -E 'mResumedActivity|topResumedActivity' | head -1 | grep -oE 'com\.[a-zA-Z0-9.]+' | head -1)
+    fg=$(safe_dumpsys activity activities 2>/dev/null | grep -E 'ResumedActivity' | head -1 | grep -oE 'com\.[a-zA-Z0-9.]+' | head -1)
 
     log "[前台检测] mCurrentFocus非微信,mFocusedApp非微信, activityTop=$fg, 结果=$([ "$fg" = "com.tencent.mm" ] && echo "微信前台" || echo "非微信前台")"
     [ "$fg" = "com.tencent.mm" ]
@@ -164,8 +184,7 @@ voip_polling_kill() {
                 pids=$(list_wechat_non_push_pids)
                 if [ -n "$pids" ] && ! is_wechat_foreground; then
                     for pid in $pids; do
-                        is_numeric "$pid" || continue
-                        [ "$pid" -le 500 ] && continue
+                        is_wechat_pid "$pid" || continue
                         log "结束 PID=$pid (VoIP后延迟)"
                         kill -9 "$pid" 2>/dev/null
                     done
@@ -234,8 +253,10 @@ kill_wechat_non_push() {
 
         log "[kill] 准备结束进程: $pids"
         for pid in $pids; do
-            is_numeric "$pid" || continue
-            [ "$pid" -le 500 ] && continue
+            if ! is_wechat_pid "$pid"; then
+                log "[kill] 跳过 PID=$pid（非微信进程或已退出）"
+                continue
+            fi
             if is_wechat_foreground; then
                 set_foreground_cooldown
                 log "[kill] kill前检测微信在前台，中断（已设冷却${FG_COOLDOWN_SECONDS}s）"
